@@ -69,7 +69,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = '20190402.02'
+VERSION = '20190622.01'
 with open('user-agents', 'r') as f:
     USER_AGENT = random.choice(f.read().splitlines()).strip()
 TRACKER_ID = 'sketch'
@@ -269,7 +269,7 @@ class WgetArgs(object):
         http_client = httpclient.HTTPClient()
 
         if item_type == 'users':
-            r = http_client.fetch('http://FIX_ME/dir/' + item_value, method='GET')
+            r = http_client.fetch('http://103.230.141.2/sketch/' + item_value, method='GET')
             for s in r.body.decode('utf-8', 'ignore').splitlines():
                 s = s.strip()
                 if len(s) == 0:
