@@ -268,7 +268,7 @@ class WgetArgs(object):
 
         http_client = httpclient.HTTPClient()
 
-        if item_type == 'users':
+        if item_type == 'disco':
             r = http_client.fetch('http://103.230.141.2/sketch/' + item_value, method='GET')
             for s in r.body.decode('utf-8', 'ignore').splitlines():
                 s = s.strip()
