@@ -77,11 +77,36 @@ TRACKER_HOST = 'tracker.archiveteam.org'
 
 
 ###########################################################################
+# Some helpfull functions
+#
+#
+#
+def get_hash(filename):
+    with open(filename, 'rb') as in_file:
+        return hashlib.sha1(in_file.read()).hexdigest()
+
+def stats_id_function(item):
+    # NEW for 2014! Some accountability hashes and stats.
+    d = {
+        'pipeline_hash': PIPELINE_SHA1,
+        'lua_hash': LUA_SHA1,
+        'python_version': sys.version,
+    }
+
+    return d
+
+
+###########################################################################
 # This section defines project-specific tasks.
 #
 # Simple tasks (tasks that do not need any concurrency) are based on the
 # SimpleTask class and have a process(item) method that is called for
 # each item.
+CWD = os.getcwd()
+PIPELINE_SHA1 = get_hash(os.path.join(CWD, 'pipeline.py'))
+LUA_SHA1 = get_hash(os.path.join(CWD, 'sketch.lua'))
+
+
 class CheckIP(SimpleTask):
     def __init__(self):
         SimpleTask.__init__(self, 'CheckIP')
@@ -211,27 +236,6 @@ class MoveFiles(SimpleTask):
         shutil.rmtree('%(item_dir)s' % item)
 
 
-def get_hash(filename):
-    with open(filename, 'rb') as in_file:
-        return hashlib.sha1(in_file.read()).hexdigest()
-
-
-CWD = os.getcwd()
-PIPELINE_SHA1 = get_hash(os.path.join(CWD, 'pipeline.py'))
-LUA_SHA1 = get_hash(os.path.join(CWD, 'sketch.lua'))
-
-
-def stats_id_function(item):
-    # NEW for 2014! Some accountability hashes and stats.
-    d = {
-        'pipeline_hash': PIPELINE_SHA1,
-        'lua_hash': LUA_SHA1,
-        'python_version': sys.version,
-    }
-
-    return d
-
-
 class WgetArgs(object):
     def realize(self, item):
         wget_args = [
@@ -259,10 +263,10 @@ class WgetArgs(object):
             '--warc-header', 'sketch-dld-script-version: ' + VERSION,
             '--warc-header', ItemInterpolation('sketch-item: %(item_name)s')
         ]
-        
+
         item_name = item['item_name']
         item_type, item_value = item_name.split(':', 1)
-        
+
         item['item_type'] = item_type
         item['item_value'] = item_value
 
@@ -278,15 +282,16 @@ class WgetArgs(object):
             raise Exception('Unknown item')
 
         http_client.close()
-        
+
         if 'bind_address' in globals():
             wget_args.extend(['--bind-address', globals()['bind_address']])
             print('')
             print('*** Wget will bind address at {0} ***'.format(
                 globals()['bind_address']))
             print('')
-            
+
         return realize(wget_args, item)
+
 
 ###########################################################################
 # Initialize the project.
@@ -357,4 +362,3 @@ pipeline = Pipeline(
         stats=ItemValue('stats')
     )
 )
-
