@@ -13,9 +13,7 @@ local downloaded = {}
 local addedtolist = {}
 local abortgrab = false
 
-local users = {}
-local queueing_posts = false
-local error_count = {}
+local ids = {}
 
 for ignore in io.open("ignore-list", "r"):lines() do
   downloaded[ignore] = true
@@ -43,19 +41,7 @@ end
 allowed = function(url, parenturl)
   if string.match(url, "'+")
       or string.match(url, "[<>\\%*%$;%^%[%],%(%){}]")
-      or string.match(url, "^https?://plus%.google%.com/up/")
-      or string.match(url, "^https?://accounts%.google%.com/")
-      or string.match(url, "/_/PlusAppUi/manifest%.json$")
-      or string.match(url, "^https?://[^/]*gstatic%.com/")
-      or string.match(url, "^https?://[^/]*googleusercontent%.com/proxy/") then
-    return false
-  end
-
-  if queueing_posts == false and string.match(url, "^https?://plus%.google%.com/[^/]+/posts/.+") then
-    queueing_posts = true
-  end
-
-  if item_type ~= "userfull" and string.match(url, "^https?://plus%.google%.com/photos/") then
+      or string.match(url, "^https?://storage%.sketch%.sonymobile.com/feed/[^/]+/image$") then
     return false
   end
 
@@ -70,24 +56,20 @@ allowed = function(url, parenturl)
     tested[s] = tested[s] + 1
   end
 
-  if string.match(url, "^https?://[^/]*googleusercontent%.com/") then
-    if string.match(url, "^https?://[^/]+/[^/]+/[^/]+/[^/]+/[^/]+/w[0-9]+[^/]+/[^/]+$")
-        or (queueing_posts and string.match(url, "^https?://[^/]+/[^=]+=w[0-9]+"))
-        or (not queueing_posts and string.match(url, "^https?://[^/]+/proxy/[^=]+=w[0-9]+")) then
-      if string.match(url, "[=/]w530[^0-9]") then
-        return true
-      end
-      return false
-    end
-    return not queueing_posts
-  end
-
-  if string.match(url, "^https?://plus%.google%.com/_/PlusAppUi/.+_reqid=") then
+  if string.match(url, "^https?://storage%.sketch%.sonymobile%.com/")
+      or string.match(url, "^https?://sketch%-cloud%-storage%.s3%.amazonaws%.com/")
+      or string.match(url, "^https?://sketch%.sonymobile%.com/profile/.+%.jpg$") then
     return true
   end
 
-  for s in string.gmatch(url, "([^/]+)") do
-    if users[s] then
+  for s in string.gmatch(url, "([0-9a-f%-]+)") do
+    if ids[s] then
+      return true
+    end
+  end
+
+  for s in string.gmatch(url, "([a-zA-Z0-9%-_]+)") do
+    if ids[s] then
       return true
     end
   end
@@ -99,15 +81,8 @@ wget.callbacks.download_child_p = function(urlpos, parent, depth, start_url_pars
   local url = urlpos["url"]["url"]
   local html = urlpos["link_expect_html"]
 
-  if string.match(url, "[<>\\%*%$;%^%[%],%(%){}]")
-      or string.match(url, "^https?://[^/]*gstatic%.com/") then
+  if string.match(url, "[<>\\%*%$;%^%[%],%(%){}]") then
     return false
-  end
-
-  if string.match(url, "^https?://[^/]*googleusercontent%.com/") then
-    if not allowed(url, parent["url"]) then
-      return false
-    end
   end
 
   if (downloaded[url] ~= true and addedtolist[url] ~= true)
@@ -128,17 +103,7 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
   local function check(urla)
     local origurl = url
     local url = string.match(urla, "^([^#]+)")
-    local url_ = string.gsub(url, "&amp;", "&")
-    local url_ = string.gsub(url_, "\\u0026", "&")
-    local url_ = string.gsub(url_, "\\u003[dD]", "=")
-    if item_type == "userfull" and string.match(url, "^https?://plus%.google%.com/photos/[0-9]+/albums/[0-9]+/[0-9]+$") then
-      local id1, id2 = string.match(url, "^https?://[^/]+/[^/]+/([0-9]+)/[^/]+/[0-9]+/([0-9]+)$")
-      check("https://plus.google.com/photos/photo/" .. id1 .. "/" .. id2)
-    end
-    if string.match(url_, "w256%-h86") and downloaded[url_] ~= true and addedtolist[url_] ~= true then
-      table.insert(urls, { url=url_ })
-      table.insert(urls, { url=string.gsub(url_, "w256%-h86", "w1084-h610") })
-    end
+    local url_ = string.gsub(string.match(url, "^(.-)%.?$"), "&amp;", "&")
     if (downloaded[url_] ~= true and addedtolist[url_] ~= true)
         and allowed(url_, origurl) then
       table.insert(urls, { url=url_ })
@@ -155,13 +120,13 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     elseif string.match(newurl, "^https?:\\/\\?/") then
       check(string.gsub(newurl, "\\", ""))
     elseif string.match(newurl, "^\\/\\/") then
-      check(string.match(url, "^(https?:)") .. string.gsub(newurl, "\\", ""))
+      check(string.match(url, "^(https?:)")..string.gsub(newurl, "\\", ""))
     elseif string.match(newurl, "^//") then
-      check(string.match(url, "^(https?:)") .. newurl)
+      check(string.match(url, "^(https?:)")..newurl)
     elseif string.match(newurl, "^\\/") then
-      check(string.match(url, "^(https?://[^/]+)") .. string.gsub(newurl, "\\", ""))
+      check(string.match(url, "^(https?://[^/]+)")..string.gsub(newurl, "\\", ""))
     elseif string.match(newurl, "^/") then
-      check(string.match(url, "^(https?://[^/]+)") .. newurl)
+      check(string.match(url, "^(https?://[^/]+)")..newurl)
     elseif string.match(newurl, "^%./") then
       checknewurl(string.match(newurl, "^%.(.+)"))
     end
@@ -169,84 +134,53 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
 
   local function checknewshorturl(newurl)
     if string.match(newurl, "^%?") then
-      check(string.match(url, "^(https?://[^%?]+)") .. newurl)
+      check(string.match(url, "^(https?://[^%?]+)")..newurl)
     elseif not (string.match(newurl, "^https?:\\?/\\?//?/?")
-       or string.match(newurl, "^[/\\]")
-       or string.match(newurl, "^%./")
-       or string.match(newurl, "^[jJ]ava[sS]cript:")
-       or string.match(newurl, "^[mM]ail[tT]o:")
-       or string.match(newurl, "^vine:")
-       or string.match(newurl, "^android%-app:")
-       or string.match(newurl, "^ios%-app:")
-       or string.match(newurl, "^%${")) then
-      check(string.match(url, "^(https?://.+/)") .. newurl)
+        or string.match(newurl, "^[/\\]")
+        or string.match(newurl, "^%./")
+        or string.match(newurl, "^[jJ]ava[sS]cript:")
+        or string.match(newurl, "^[mM]ail[tT]o:")
+        or string.match(newurl, "^vine:")
+        or string.match(newurl, "^android%-app:")
+        or string.match(newurl, "^ios%-app:")
+        or string.match(newurl, "^%${")) then
+      check(string.match(url, "^(https?://.+/)")..newurl)
     end
   end
 
-  if string.match(url, "^https?://plus%.google%.com/[0-9]+$") then
-    users[string.match(url, "^https?://[^/]+/([0-9]+)$")] = true
-  end
-
-  if allowed(url, nil) and not string.match(url, "^https?://[^/]*googleusercontent%.com/") then
+  if allowed(url, nil) and status_code ~= 404 then
     html = read_file(file)
-    if string.match(url, "^https?://plus%.google%.com/[0-9]+$") then
-      if string.match(html, '<link%s+rel="canonical"%s+href="https?://plus%.google%.com/[^/"]+">') then
-        local canonical = string.match(html, '<link%s+rel="canonical"%s+href="https?://plus%.google%.com/([^/"]+)">')
-        users[canonical] = true
-        if string.match(html, '<span%s+class="RveJvd%s+snByac">View%s+all</span>') then
-          check(url .. "/palette")
-          check("https://plus.google.com/" .. canonical .. "/palette")
-        end
-      elseif string.match(html, '<span%s+class="RveJvd%s+snByac">View%s+all</span>') then
-        check(url .. "/palette")
+    if string.match(url, "^https?://sketch%.sonymobile%.com/api/1/sharedsketch/") then
+      data = load_json_file(html)
+      check("https://sketch.sonymobile.com/feed/" .. data["result"]["id"])
+      check("https://sketch.sonymobile.com/api/1/comments/sketch/" .. data["result"]["artistId"] .. "/" .. data["result"]["id"])
+      check("https://sketch.sonymobile.com/explore/featured/sketch/" .. data["result"]["id"])
+      check("https://sketch.sonymobile.com/explore/trending/sketch/" .. data["result"]["id"])
+      check("https://sketch.sonymobile.com/explore/popular/sketch/" .. data["result"]["id"])
+      check("https://sketch.sonymobile.com/explore/world/sketch/" .. data["result"]["id"])
+      for tag in string.gmatch(data["result"]["caption"], "#([a-zA-Z0-9%-_]+)") do
+        check("https://sketch.sonymobile.com/tag/" .. tag)
+        check("https://sketch.sonymobile.com/tag/" .. tag .. "/sketch/" .. data["result"]["id"])
       end
-      local sid = string.match(html, '"FdrFJe":"([^"]+)"')
-      local version = string.match(html, '"cfb2h":"([^"]+)"')
-      local user_id = string.match(url, "^https?://[^/]+/([0-9]+)$")
-      local current_time = os.date("*t")
-      local reqid = current_time.hour * 3600 + current_time.min * 60 + current_time.sec
-      local data = string.match(html, "AF_initDataCallback%({key:%s+'ds:6'.-return%s*(.-)}}%);</script>")
-      if data == nil or sid == nil or version == nil then
-        if status_code == 404 then
-          return urls
-        end
-        print('Could not extract data...')
-        abortgrab = true
-        return urls
+    elseif string.match(url, "^https?://sketch%.sonymobile%.com/api/1/artist/") then
+      data = load_json_file(html)
+      local artist_id = data["result"]["list"][1]["id"]
+      local username = data["result"]["list"][1]["username"]
+      if username ~= nil then
+        ids[username] = true
+        check("https://sketch.sonymobile.com/u/" .. username)
+        check("https://sketch.sonymobile.com/api/1/search/username/" .. username)
+        check("https://sketch.sonymobile.com/profile/" .. artist_id .. "/username/" .. username)
       end
-      local data = load_json_file(data)
-      if data[1][2] ~= nil then
-        local newurl = "https://plus.google.com/_/PlusAppUi/data?ds.extension=74333095&f.sid=" .. sid .. "&bl=" .. version .. "&hl=en-US&soc-app=199&soc-platform=1&soc-device=1&_reqid=" .. reqid .. "&rt=c"
-        local post_data = 'f.req=[[[74333095,[{"74333095":["' .. data[1][2] .. '","' .. user_id .. '"]}],null,null,0]]]'
-        table.insert(urls, {url=newurl, post_data=post_data})
-      end
-    end
-    if string.match(url, "^https?://plus%.google%.com/_/PlusAppUi/.+_reqid=") then
-      local reqid = string.match(url, "_reqid=([0-9]+)")
-      if tonumber(reqid) < 100000 then
-        reqid = reqid + 100000
-      end
-      reqid = reqid + 100000
-      local newurl = string.gsub(url, "_reqid=[0-9]+", "_reqid=" .. reqid)
-      local data = load_json_file(string.match(html, "^%)%]}'%s+[0-9]+(.+)"))
-      for _, d in pairs(data[1][3]['74333095'][1][8]) do
-        check("https://plus.google.com/" .. d[7]["33558957"][22])
-      end
-      if data[1][3]['74333095'][1][2] ~= nil then
-        local post_data = 'f.req=[[[74333095,[{"74333095":["' .. data[1][3]['74333095'][1][2] .. '","' .. data[1][3]['74333095'][1][8][1][7]['33558957'][17] .. '"]}],null,null,0]]]'
-        table.insert(urls, {url=newurl, post_data=post_data})
-      end
-      return urls
-    end
-    if string.match(url, "^https?://plus%.google%.com/[^/]+/posts/.+") then
-      html = string.gsub(html, '<meta%s+property="og:image"%s+content="https?://[^/]*googleusercontent%.com/[^"]+">', '')
+      check("https://sketch.sonymobile.com/profile/" .. artist_id)
+      check("https://sketch.sonymobile.com/api/1/feed/artist/" .. artist_id)
+      check("https://sketch.sonymobile.com/api/1/feed/artist/" .. artist_id .. "/default/api%2Fusers%2F" .. artist_id .. "%2Fpublishes")
+    elseif string.match(url, "^https?://sketch%.sonymobile%.com/api/1/feed/artist/") then
+      data = load_json_file(html)
+      checknewshorturl(data["result"]["paging"]["next"])
     end
     for newurl in string.gmatch(string.gsub(html, "&quot;", '"'), '([^"]+)') do
-      if string.match(newurl,"^//plus.google.comevents/") then
-        checknewurl(string.gsub(newurl, "comevents", "com/events"))
-      else
-        checknewurl(newurl)
-      end
+      checknewurl(newurl)
     end
     for newurl in string.gmatch(string.gsub(html, "&#039;", "'"), "([^']+)") do
       checknewurl(newurl)
@@ -272,17 +206,26 @@ wget.callbacks.httploop_result = function(url, err, http_stat)
   status_code = http_stat["statcode"]
   
   url_count = url_count + 1
-  io.stdout:write(url_count .. "=" .. status_code .. " " .. url["url"] .. "  \n")
+  if http_stat["rderrmsg"] ~= nil then
+    io.stdout:write(url_count .. "=" .. status_code .. " " .. http_stat["rderrmsg"] .. " " .. url["url"] .. "  \n")
+  else
+    io.stdout:write(url_count .. "=" .. status_code .. " " .. url["url"] .. "  \n")
+  end
   io.stdout:flush()
+
+print(http_stat)
+for k, v in pairs(http_stat) do
+  print(k, v)
+end
+
+  if string.match(url["url"], "^https?://sketch%.sonymobile%.com/api/1/sharedsketch/[a-f0-9%-]+$")
+      or string.match(url["url"], "^https?://sketch%.sonymobile%.com/api/1/artist/[a-f0-9%-]+$") then
+    ids[string.match(url["url"], "([a-f0-9%-]+)$")] = true
+  end
 
   if (status_code >= 300 and status_code <= 399) then
     local newloc = string.match(http_stat["newloc"], "^([^#]+)")
-    if string.match(newloc, "^https?://www%.google%.com/sorry/") then
-      print("Rate-limit redirection encountered, sleeping ...")
-      os.execute("sleep " .. math.min(math.floor(math.pow(tries, 2)), 3600))
-      tries = tries + 1
-      return wget.actions.CONTINUE
-    elseif string.match(newloc, "^//") then
+    if string.match(newloc, "^//") then
       newloc = string.match(url["url"], "^(https?:)") .. string.match(newloc, "^//(.+)")
     elseif string.match(newloc, "^/") then
       newloc = string.match(url["url"], "^(https?://[^/]+)") .. newloc
@@ -303,33 +246,17 @@ wget.callbacks.httploop_result = function(url, err, http_stat)
     io.stdout:write("ABORTING...\n")
     return wget.actions.ABORT
   end
-
-  if string.match(url["url"], "/browser%-not%-supported/") then
-    return wget.actions.ABORT
-  end
-
-  local domain = string.match(url["url"], "^https?://([^/]+)")
   
   if status_code >= 500
       or (status_code >= 400 and status_code ~= 403 and status_code ~= 404)
       or status_code  == 0 then
-    io.stdout:write("Server returned " .. http_stat.statcode .. " (" .. err .. "). Sleeping.\n")
+    io.stdout:write("Server returned "..http_stat.statcode.." ("..err.."). Sleeping.\n")
     io.stdout:flush()
     local maxtries = 8
     if not allowed(url["url"], nil) then
-      maxtries = 2
+        maxtries = 2
     end
     if tries > maxtries then
-      if status_code == 400 then
-        if error_count[domain] == 9 then
-          return wget.actions.ABORT
-        end
-        if error_count[domain] == nil then
-          error_count[domain] = 0
-        end
-        error_count[domain] = error_count[domain] + 1
-        return wget.actions.EXIT
-      end
       io.stdout:write("\nI give up...\n")
       io.stdout:flush()
       tries = 0
@@ -339,21 +266,13 @@ wget.callbacks.httploop_result = function(url, err, http_stat)
         return wget.actions.EXIT
       end
     else
-      if status_code >= 500 and status_code < 600 then
-        os.execute("sleep " .. math.min(math.floor(math.pow(2, 2.5 * tries)) + 10, 3600))
-      else
-        os.execute("sleep " .. math.floor(math.pow(2, tries)))
-      end
+      os.execute("sleep " .. math.floor(math.pow(2, tries)))
       tries = tries + 1
       return wget.actions.CONTINUE
     end
   end
 
   tries = 0
-
-  if error_count[domain] ~= nil and error_count[domain] > 0 then
-    error_count[domain] = error_count[domain] - 1
-  end
 
   local sleep_time = 0
 

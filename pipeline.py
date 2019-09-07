@@ -16,23 +16,14 @@ import subprocess
 import sys
 import time
 import string
-import re
-import random
 
-try:
-    import warcio
-    from warcio.archiveiterator import ArchiveIterator
-    from warcio.warcwriter import WARCWriter
-except:
-    raise Exception("Please install warc with 'sudo pip install warcio --upgrade'.")
+from tornado import httpclient
 
 import seesaw
 from seesaw.externalprocess import WgetDownload
 from seesaw.pipeline import Pipeline
 from seesaw.project import Project
 from seesaw.util import find_executable
-
-from tornado import httpclient
 
 
 # check the seesaw version
@@ -69,9 +60,8 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = '20190622.01'
-with open('user-agents', 'r') as f:
-    USER_AGENT = random.choice(f.read().splitlines()).strip()
+VERSION = '20190907.01'
+USER_AGENT = 'ArchiveTeam'
 TRACKER_ID = 'sketch'
 TRACKER_HOST = 'tracker.archiveteam.org'
 
@@ -123,8 +113,7 @@ class PrepareDirectories(SimpleTask):
     def process(self, item):
         item_name = item['item_name']
         escaped_item_name = item_name.replace(':', '_').replace('/', '_').replace('~', '_')
-        item_hash = hashlib.sha1(item_name.encode('utf-8')).hexdigest()
-        dirname = '/'.join((item['data_dir'], item_hash))
+        dirname = '/'.join((item['data_dir'], escaped_item_name))
 
         if os.path.isdir(dirname):
             shutil.rmtree(dirname)
@@ -132,67 +121,10 @@ class PrepareDirectories(SimpleTask):
         os.makedirs(dirname)
 
         item['item_dir'] = dirname
-        item['warc_file_base'] = '%s-%s-%s' % (self.warc_prefix, item_hash,
+        item['warc_file_base'] = '%s-%s-%s' % (self.warc_prefix, escaped_item_name[:50],
             time.strftime('%Y%m%d-%H%M%S'))
 
         open('%(item_dir)s/%(warc_file_base)s.warc.gz' % item, 'w').close()
-        open('%(item_dir)s/%(warc_file_base)s_data.txt' % item, 'w').close()
-
-
-class Deduplicate(SimpleTask):
-    def __init__(self):
-        SimpleTask.__init__(self, 'Deduplicate')
-
-    def process(self, item):
-        digests = {}
-        input_filename = '%(item_dir)s/%(warc_file_base)s.warc.gz' % item
-        output_filename = '%(item_dir)s/%(warc_file_base)s-deduplicated.warc.gz' % item
-        with open(input_filename, 'rb') as f_in, \
-                open(output_filename, 'wb') as f_out:
-            writer = WARCWriter(filebuf=f_out, gzip=True)
-            for record in ArchiveIterator(f_in):
-                url = record.rec_headers.get_header('WARC-Target-URI')
-                if url is not None and url.startswith('<'):
-                    url = re.search('^<(.+)>$', url).group(1)
-                    record.rec_headers.replace_header('WARC-Target-URI', url)
-                if record.rec_headers.get_header('WARC-Type') == 'response':
-                    digest = record.rec_headers.get_header('WARC-Payload-Digest')
-                    if digest in digests:
-                        writer.write_record(
-                            self._record_response_to_revisit(writer, record,
-                                                             digests[digest])
-                        )
-                    else:
-                        digests[digest] = (
-                            record.rec_headers.get_header('WARC-Record-ID'),
-                            record.rec_headers.get_header('WARC-Date'),
-                            record.rec_headers.get_header('WARC-Target-URI')
-                        )
-                        writer.write_record(record)
-                elif record.rec_headers.get_header('WARC-Type') == 'warcinfo':
-                    record.rec_headers.replace_header('WARC-Filename', output_filename)
-                    writer.write_record(record)
-                else:
-                    writer.write_record(record)
-
-    def _record_response_to_revisit(self, writer, record, duplicate):
-        warc_headers = record.rec_headers
-        warc_headers.replace_header('WARC-Refers-To', duplicate[0])
-        warc_headers.replace_header('WARC-Refers-To-Date', duplicate[1])
-        warc_headers.replace_header('WARC-Refers-To-Target-URI', duplicate[2])
-        warc_headers.replace_header('WARC-Type', 'revisit')
-        warc_headers.replace_header('WARC-Truncated', 'length')
-        warc_headers.replace_header('WARC-Profile',
-                                    'http://netpreserve.org/warc/1.0/' \
-                                    'revisit/identical-payload-digest')
-        warc_headers.remove_header('WARC-Block-Digest')
-        warc_headers.remove_header('Content-Length')
-        return writer.create_warc_record(
-            record.rec_headers.get_header('WARC-Target-URI'),
-            'revisit',
-            warc_headers=warc_headers,
-            http_headers=record.http_headers
-        )
 
 
 class MoveFiles(SimpleTask):
@@ -200,13 +132,12 @@ class MoveFiles(SimpleTask):
         SimpleTask.__init__(self, 'MoveFiles')
 
     def process(self, item):
+        # NEW for 2014! Check if wget was compiled with zlib support
         if os.path.exists('%(item_dir)s/%(warc_file_base)s.warc' % item):
             raise Exception('Please compile wget with zlib support!')
 
         os.rename('%(item_dir)s/%(warc_file_base)s.warc.gz' % item,
-            '%(data_dir)s/%(warc_file_base)s.warc.gz' % item)
-        os.rename('%(item_dir)s/%(warc_file_base)s_data.txt' % item,
-            '%(data_dir)s/%(warc_file_base)s_data.txt' % item)
+              '%(data_dir)s/%(warc_file_base)s.warc.gz' % item)
 
         shutil.rmtree('%(item_dir)s' % item)
 
@@ -215,11 +146,9 @@ def get_hash(filename):
     with open(filename, 'rb') as in_file:
         return hashlib.sha1(in_file.read()).hexdigest()
 
-
 CWD = os.getcwd()
 PIPELINE_SHA1 = get_hash(os.path.join(CWD, 'pipeline.py'))
 LUA_SHA1 = get_hash(os.path.join(CWD, 'sketch.lua'))
-
 
 def stats_id_function(item):
     # NEW for 2014! Some accountability hashes and stats.
@@ -233,6 +162,14 @@ def stats_id_function(item):
 
 
 class WgetArgs(object):
+    post_chars = string.digits + 'abcdef'
+
+    def int_to_str(self, i):
+        d, m = divmod(i, 16)
+        if d > 0:
+            return self.int_to_str(d) + self.post_chars[m]
+        return self.post_chars[m]
+
     def realize(self, item):
         wget_args = [
             WGET_LUA,
@@ -251,7 +188,7 @@ class WgetArgs(object):
             '--page-requisites',
             '--timeout', '30',
             '--tries', 'inf',
-            '--domains', 'sketch.sonymobile.com',
+            '--domains', 'sonymobile.com',
             '--span-hosts',
             '--waitretry', '30',
             '--warc-file', ItemInterpolation('%(item_dir)s/%(warc_file_base)s'),
@@ -259,33 +196,36 @@ class WgetArgs(object):
             '--warc-header', 'sketch-dld-script-version: ' + VERSION,
             '--warc-header', ItemInterpolation('sketch-item: %(item_name)s')
         ]
-        
+
         item_name = item['item_name']
+        assert ':' in item_name
         item_type, item_value = item_name.split(':', 1)
-        
+
         item['item_type'] = item_type
         item['item_value'] = item_value
 
         http_client = httpclient.HTTPClient()
 
-        if item_type == 'disco':
+        if item_type == 'sketches':
             r = http_client.fetch('http://103.230.141.2/sketch/' + item_value, method='GET')
             for s in r.body.decode('utf-8', 'ignore').splitlines():
                 s = s.strip()
                 if len(s) == 0:
                     continue
+                wget_args.extend(['--warc-header', 'sketch-sketch-id: {}'.format(s)])
+                wget_args.append('https://sketch.sonymobile.com/api/1/sharedsketch/{}'.format(s))
         else:
             raise Exception('Unknown item')
 
         http_client.close()
-        
+
         if 'bind_address' in globals():
             wget_args.extend(['--bind-address', globals()['bind_address']])
             print('')
             print('*** Wget will bind address at {0} ***'.format(
                 globals()['bind_address']))
             print('')
-            
+
         return realize(wget_args, item)
 
 ###########################################################################
@@ -294,11 +234,10 @@ class WgetArgs(object):
 # This will be shown in the warrior management panel. The logo should not
 # be too big. The deadline is optional.
 project = Project(
-    title='Sketch',
-    project_html='''
-        <img class="project-logo" alt="Project logo" src="https://archiveteam.org/images/c/c7/Sketch_2019-04-27.png" height="50px" title=""/>
-        <h2>sketch.sonymobile.com <span class="links"><a href="https://sketch.sonymobile.com">Website</a> &middot; <a href="http://tracker.archiveteam.org/sketch/">Leaderboard</a></span></h2>
-        <p>Saving Sketch</p>
+    title = 'sketch',
+    project_html = '''
+    <img class="project-logo" alt="logo" src="https://www.archiveteam.org/images/f/f6/Sketch_icon.png" height="50px"/>
+    <h2>sketch.sonymobile.com <span class="links"><a href="https://sketch.sonymobile.com">Website</a> &middot; <a href="http://tracker.archiveteam.org/sketch/">Leaderboard</a></span></h2>
     '''
 )
 
@@ -315,10 +254,9 @@ pipeline = Pipeline(
             'item_dir': ItemValue('item_dir'),
             'item_value': ItemValue('item_value'),
             'item_type': ItemValue('item_type'),
-            'warc_file_base': ItemValue('warc_file_base')
+            'warc_file_base': ItemValue('warc_file_base'),
         }
     ),
-    #Deduplicate(),
     PrepareStatsForTracker(
         defaults={'downloader': downloader, 'version': VERSION},
         file_groups={
@@ -329,7 +267,7 @@ pipeline = Pipeline(
         id_function=stats_id_function,
     ),
     MoveFiles(),
-    LimitConcurrent(NumberConfigValue(min=1, max=20, default='3',
+    LimitConcurrent(NumberConfigValue(min=1, max=20, default='20',
         name='shared:rsync_threads', title='Rsync threads',
         description='The maximum number of concurrent uploads.'),
         UploadWithTracker(
@@ -337,24 +275,18 @@ pipeline = Pipeline(
             downloader=downloader,
             version=VERSION,
             files=[
-                ItemInterpolation('%(data_dir)s/%(warc_file_base)s.warc.gz'),
-                ItemInterpolation('%(data_dir)s/%(warc_file_base)s_data.txt')
+                ItemInterpolation('%(data_dir)s/%(warc_file_base)s.warc.gz')
             ],
             rsync_target_source_path=ItemInterpolation('%(data_dir)s/'),
             rsync_extra_args=[
-                '--sockopts=SO_SNDBUF=8388608,SO_RCVBUF=8388608',
                 '--recursive',
                 '--partial',
                 '--partial-dir', '.rsync-tmp',
-                '--min-size', '1',
-                '--no-compress',
-                '--compress-level', '0'
             ]
-            ),
+        ),
     ),
     SendDoneToTracker(
         tracker_url='http://%s/%s' % (TRACKER_HOST, TRACKER_ID),
         stats=ItemValue('stats')
     )
 )
-
