@@ -39,7 +39,7 @@ if StrictVersion(seesaw.__version__) < StrictVersion('0.8.5'):
 # 2. prints the required version string
 WGET_LUA = find_executable(
     'Wget+Lua',
-    ['GNU Wget 1.14.lua.20130523-9a5c', 'GNU Wget 1.14.lua.20160530-955376b'],
+    ['GNU Wget 1.20.3-at-lua'],
     [
         './wget-lua',
         './wget-lua-warrior',
@@ -60,7 +60,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = '20190907.01'
+VERSION = '20190908.01'
 USER_AGENT = 'ArchiveTeam'
 TRACKER_ID = 'sketch'
 TRACKER_HOST = 'tracker.archiveteam.org'
@@ -194,7 +194,9 @@ class WgetArgs(object):
             '--warc-file', ItemInterpolation('%(item_dir)s/%(warc_file_base)s'),
             '--warc-header', 'operator: Archive Team',
             '--warc-header', 'sketch-dld-script-version: ' + VERSION,
-            '--warc-header', ItemInterpolation('sketch-item: %(item_name)s')
+            '--warc-header', ItemInterpolation('sketch-item: %(item_name)s'),
+            '--header', 'Accept-Encoding: gzip',
+            '--compression', 'gzip'
         ]
 
         item_name = item['item_name']
