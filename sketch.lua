@@ -148,7 +148,11 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     end
   end
 
-  if allowed(url, nil) and status_code ~= 404 then
+  if allowed(url, nil) and status_code ~= 404 and not (
+      string.match(url, "^https?://storage%.sketch%.sonymobile%.com/")
+      or string.match(url, "^https?://sketch%-cloud%-storage%.s3%.amazonaws%.com/")
+      or string.match(url, "^https?://sketch%.sonymobile%.com/profile/.+%.jpg$")
+    ) then
     html = read_file(file)
     if string.match(url, "^https?://sketch%.sonymobile%.com/api/1/sharedsketch/") then
       data = load_json_file(html)
@@ -212,11 +216,6 @@ wget.callbacks.httploop_result = function(url, err, http_stat)
     io.stdout:write(url_count .. "=" .. status_code .. " " .. url["url"] .. "  \n")
   end
   io.stdout:flush()
-
-print(http_stat)
-for k, v in pairs(http_stat) do
-  print(k, v)
-end
 
   if string.match(url["url"], "^https?://sketch%.sonymobile%.com/api/1/sharedsketch/[a-f0-9%-]+$")
       or string.match(url["url"], "^https?://sketch%.sonymobile%.com/api/1/artist/[a-f0-9%-]+$") then
