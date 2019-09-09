@@ -41,7 +41,9 @@ end
 allowed = function(url, parenturl)
   if string.match(url, "'+")
       or string.match(url, "[<>\\%*%$;%^%[%],%(%){}]")
-      or string.match(url, "^https?://storage%.sketch%.sonymobile.com/feed/[^/]+/image$") then
+      or string.match(url, "^https?://storage%.sketch%.sonymobile.com/feed/[^/]+/image$")
+      or (item_type == "sketches" and string.match(url, "^https?://sketch%-cloud%-storage%.s3%.amazonaws%.com/public_images") and not string.match(url, "_s$"))
+      or not string.match(url, "^https?://[^/]*sketch") then
     return false
   end
 
@@ -119,6 +121,8 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       check(newurl)
     elseif string.match(newurl, "^https?:\\/\\?/") then
       check(string.gsub(newurl, "\\", ""))
+    elseif string.match(newurl, "^https?:\\u002F\\u002F") then
+      check(string.gsub(newurl, "\\u002F", "/"))
     elseif string.match(newurl, "^\\/\\/") then
       check(string.match(url, "^(https?:)")..string.gsub(newurl, "\\", ""))
     elseif string.match(newurl, "^//") then
@@ -148,6 +152,11 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     end
   end
 
+  if item_type == "user"
+      and string.match(url, "^https?://sketch%-cloud%-storage%.s3%.amazonaws%.com/public_images.+_s$") then
+    check(string.match(url, "^(.+)_s$"))
+  end 
+
   if allowed(url, nil) and status_code ~= 404 and not (
       string.match(url, "^https?://storage%.sketch%.sonymobile%.com/")
       or string.match(url, "^https?://sketch%-cloud%-storage%.s3%.amazonaws%.com/")
@@ -156,6 +165,10 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
     html = read_file(file)
     if string.match(url, "^https?://sketch%.sonymobile%.com/api/1/sharedsketch/") then
       data = load_json_file(html)
+      if data["result"] == nil then
+        print("Got not result.")
+        abortgrab = true
+      end
       check("https://sketch.sonymobile.com/feed/" .. data["result"]["id"])
       check("https://sketch.sonymobile.com/api/1/comments/sketch/" .. data["result"]["artistId"] .. "/" .. data["result"]["id"])
       check("https://sketch.sonymobile.com/explore/featured/sketch/" .. data["result"]["id"])
@@ -168,6 +181,10 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       end
     elseif string.match(url, "^https?://sketch%.sonymobile%.com/api/1/artist/") then
       data = load_json_file(html)
+      if data["result"] == nil then
+        print("Got not result.")
+        abortgrab = true
+      end
       local artist_id = data["result"]["list"][1]["id"]
       local username = data["result"]["list"][1]["username"]
       if username ~= nil then
@@ -181,10 +198,18 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
       check("https://sketch.sonymobile.com/api/1/feed/artist/" .. artist_id .. "/default/api%2Fusers%2F" .. artist_id .. "%2Fpublishes")
     elseif string.match(url, "^https?://sketch%.sonymobile%.com/api/1/feed/artist/") then
       data = load_json_file(html)
-      checknewshorturl(data["result"]["paging"]["next"])
+      if data["result"] == nil then
+        print("Got not result.")
+        abortgrab = true
+      end
+      if data["result"]["paging"] ~= nil then
+        checknewshorturl(data["result"]["paging"]["next"])
+      end
     end
-    for newurl in string.gmatch(string.gsub(html, "&quot;", '"'), '([^"]+)') do
-      checknewurl(newurl)
+    for newurl in string.gmatch(string.gsub(string.gsub(html, '\\"', '"'), "&quot;", '"'), '([^"]+)') do
+      if not string.match(newurl, "^https?:\\u002F\\u002F") or item_type == "user" then
+        checknewurl(newurl)
+      end
     end
     for newurl in string.gmatch(string.gsub(html, "&#039;", "'"), "([^']+)") do
       checknewurl(newurl)

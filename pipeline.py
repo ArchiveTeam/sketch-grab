@@ -60,7 +60,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = '20190908.02'
+VERSION = '20190909.01'
 USER_AGENT = 'ArchiveTeam'
 TRACKER_ID = 'sketch'
 TRACKER_HOST = 'tracker.archiveteam.org'
@@ -195,7 +195,7 @@ class WgetArgs(object):
             '--warc-header', 'operator: Archive Team',
             '--warc-header', 'sketch-dld-script-version: ' + VERSION,
             '--warc-header', ItemInterpolation('sketch-item: %(item_name)s'),
-            '--header', 'Accept-Encoding: gzip, deflate, br',
+            '--header', 'Accept-Encoding: gzip',
             '--compression', 'gzip'
         ]
 
@@ -216,6 +216,9 @@ class WgetArgs(object):
                     continue
                 wget_args.extend(['--warc-header', 'sketch-sketch-id: {}'.format(s)])
                 wget_args.append('https://sketch.sonymobile.com/api/1/sharedsketch/{}'.format(s))
+        elif item_type == 'user':
+            wget_args.extend(['--warc-header', 'sketch-user-id: '.format(item_value)])
+            wget_args.append('https://sketch.sonymobile.com/api/1/artist/{}'.format(item_value))
         else:
             raise Exception('Unknown item')
 
@@ -268,7 +271,7 @@ pipeline = Pipeline(
         },
         id_function=stats_id_function,
     ),
-    #MoveFiles(),
+    MoveFiles(),
     LimitConcurrent(NumberConfigValue(min=1, max=20, default='20',
         name='shared:rsync_threads', title='Rsync threads',
         description='The maximum number of concurrent uploads.'),
