@@ -60,7 +60,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = '20190909.02'
+VERSION = '20190925.01'
 USER_AGENT = 'ArchiveTeam'
 TRACKER_ID = 'sketch'
 TRACKER_HOST = 'tracker.archiveteam.org'
@@ -125,6 +125,7 @@ class PrepareDirectories(SimpleTask):
             time.strftime('%Y%m%d-%H%M%S'))
 
         open('%(item_dir)s/%(warc_file_base)s.warc.gz' % item, 'w').close()
+        open('%(item_dir)s/%(warc_file_base)s_data.txt' % item, 'w').close()
 
 
 class MoveFiles(SimpleTask):
@@ -138,6 +139,8 @@ class MoveFiles(SimpleTask):
 
         os.rename('%(item_dir)s/%(warc_file_base)s.warc.gz' % item,
               '%(data_dir)s/%(warc_file_base)s.warc.gz' % item)
+        os.rename('%(item_dir)s/%(warc_file_base)s_data.txt' % item,
+              '%(data_dir)s/%(warc_file_base)s_data.txt' % item)
 
         shutil.rmtree('%(item_dir)s' % item)
 
@@ -280,13 +283,17 @@ pipeline = Pipeline(
             downloader=downloader,
             version=VERSION,
             files=[
-                ItemInterpolation('%(data_dir)s/%(warc_file_base)s.warc.gz')
+                ItemInterpolation('%(data_dir)s/%(warc_file_base)s.warc.gz'),
+                ItemInterpolation('%(data_dir)s/%(warc_file_base)s_data.txt')
             ],
             rsync_target_source_path=ItemInterpolation('%(data_dir)s/'),
             rsync_extra_args=[
                 '--recursive',
                 '--partial',
                 '--partial-dir', '.rsync-tmp',
+                '--min-size', '1',
+                '--no-compress',
+                '--compress-level', '0'
             ]
         ),
     ),

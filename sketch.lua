@@ -14,6 +14,7 @@ local addedtolist = {}
 local abortgrab = false
 
 local ids = {}
+local sketches = {}
 
 for ignore in io.open("ignore-list", "r"):lines() do
   downloaded[ignore] = true
@@ -202,6 +203,11 @@ wget.callbacks.get_urls = function(file, url, is_css, iri)
         print("Got not result.")
         abortgrab = true
       end
+      if data["result"]["list"] ~= nil then
+        for _, d in ipairs(data["result"]["list"]) do
+          sketches[d["id"]] = true
+        end
+      end
       if data["result"]["paging"] ~= nil then
         checknewshorturl(data["result"]["paging"]["next"])
       end
@@ -305,6 +311,14 @@ wget.callbacks.httploop_result = function(url, err, http_stat)
   end
 
   return wget.actions.NOTHING
+end
+
+wget.callbacks.finish = function(start_time, end_time, wall_time, numurls, total_downloaded_bytes, total_download_time)
+  local file = io.open(item_dir..'/'..warc_file_base..'_data.txt', 'w')
+  for sketch, _ in pairs(sketches) do
+    file:write(sketch .. "\n")
+  end
+  file:close()
 end
 
 wget.callbacks.before_exit = function(exit_status, exit_status_string)
